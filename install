@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+
+set -eu -o pipefail
+
+print_usage() {
+    ${format_cmd} <<-EOF
+        |Install kernel module and agent service for syncookie synchronization with Mitigator software.
+        |
+        |Usage: $(basename $0) [-option]
+        |
+        |    [without options]     Install module and service
+        |    -u, --uninstall       Uninstall module and service
+        |    -h, --help            Show this help
+        |
+EOF
+}
+
+info() {
+    echo >&2 "$(tput setaf 2; tput smso)INFO:$(tput rmso)" $@ $(tput sgr 0)
+}
+
+error() {
+    echo >&2 "$(tput setaf 1; tput smso)ERROR:$(tput rmso)" $@ $(tput sgr 0)
+}
+
+install_user() {
+    info "Creating '${user}' user..."
+
+    if ! getent passwd "${user}" &> /dev/null; then
+        pw user add -n "${user}" -d "/var/empty"
+    fi
+
+    mkdir -p "${install_dir}"
+    chmod 700 "${install_dir}"
+}
+
+uninstall_user() {
+    info "Removing '${user}' user..."
+
+    # nothing to do.
+}
+
+install_module() {
+    info "Building and installing module..."
+
+    build_dir=$(mktemp -d)
+    cp Makefile isn_sync.c "${build_dir}"
+    pushd ${build_dir} > /dev/null
+    make -C .
+    /usr/bin/install -o root -g wheel -m 555 "./${module_name}.ko" "/boot/modules"
+    popd > /dev/null
+    rm -rf "${build_dir}"
+}
+
+uninstall_module() {
+    info "Uninstalling module..."
+
+    kldunload "${module_name}" &> /dev/null
+    rm -f "/boot/modules/${module_name}.ko"
+}
+
+install_agent() {
+    info "Installing agent..."
+
+    test -f "${host_key}" || ssh-keygen -t "ed25519" -f "${host_key}" -C "$(hostname)" -N ""
+
+    if [ -f "${config_file}" ]; then
+        mv ${config_file}{,.bak}
+        info "Old config \"${config_file}\" backuped."
+    fi
+
+    ${format_cmd} <<-EOF > "${config_file}"
+        |Port 7100
+        |PidFile ${agent_pidfile}
+        |HostKey ${install_dir}/host.ed25519
+        |AuthorizedKeysFile ${install_dir}/keys
+        |PasswordAuthentication no
+        |PermitOpen none
+        |AllowAgentForwarding no
+        |AllowStreamLocalForwarding no
+        |AllowTCPForwarding no
+        |PrintMotd no
+EOF
+
+    ${format_cmd} <<-EOF > "${install_dir}/server"
+        |#!/usr/bin/env bash
+        |case "\$2" in
+        |   get-tcp-secrets)
+        |       echo "uname: $(uname)"
+        |       exec ${get_secrets_cmd}
+        |       ;;
+        |esac
+EOF
+
+    chmod +x "${install_dir}/server"
+    touch "${install_dir}/keys"
+    chown -R ${name}:${name} ${install_dir}
+}
+
+uninstall_agent() {
+    info "Uninstalling agent..."
+
+    rm -f "${install_dir}/server"
+    # Legacy support.
+    rm -rf "${install_dir}/empty"
+}
+
+install_service() {
+    info "Creating and starting service..."
+
+    mkdir -p "${service_path}"
+    ${format_cmd} <<-EOF > "${service_file}"
+        |#!/bin/sh
+        |
+        |# PROVIDE: mitigator_agent
+        |# REQUIRE: DAEMON
+        |# KEYWORD: shutdown
+        |
+        |. /etc/rc.subr
+        |
+        |name="${name}"
+        |desc="${fullname}"
+        |rcvar="${name}_enable"
+        |command="/usr/sbin/sshd"
+        |command_args="-f ${install_dir}/config"
+        |pidfile="${agent_pidfile}"
+        |start_precmd="${name}_precmd"
+        |stop_postcmd="${name}_postcmd"
+        |
+        |load_rc_config "\$name"
+        |: \${mitigator_agent_enable:="NO"}
+        |
+        |${name}_precmd() {
+        |   /sbin/sysctl -w net.inet.tcp.syncookies=1
+        |   /sbin/sysctl -w net.inet.tcp.syncookies_only=1
+        |   /sbin/sysctl -w net.inet.tcp.isn_reseed_interval=0
+        |   /sbin/kldload ${module_name}
+        |}
+        |
+        |${name}_postcmd() {
+        |   /sbin/kldunload ${module_name}
+        |}
+        |
+        |run_rc_command "\$1"
+EOF
+
+    chmod +x "${service_file}"
+    echo "${name}_enable=\"YES\"" >> /etc/rc.conf
+    pw user mod -n "${user}" -s "${install_dir}/server"
+    service ${name} start
+}
+
+uninstall_service() {
+    info "Stopping and uninstalling service..."
+
+    service ${name} stop
+    sed -i "" "/${name}_enable=/d" /etc/rc.conf
+    rm -f ${service_file}
+}
+
+install() {
+    info "Installing ${fullname}:"
+
+    set +e
+    uninstall_service
+    uninstall_agent
+    uninstall_module
+    set -e
+
+    install_user
+    install_module
+    install_agent
+    install_service
+
+    info "Done."
+}
+
+uninstall() {
+    info "Uninstalling ${fullname}:"
+
+    set +e
+    uninstall_service
+    uninstall_agent
+    uninstall_module
+    uninstall_user
+    set -e
+
+    info "Done."
+}
+
+init() {
+    name="mitigator_agent"
+    user="mitigator_agent"
+    module_name="isn_sync"
+    module_version="23.08"
+    fullname="MITIGATOR Agent"
+    install_dir="/usr/local/${name}"
+    host_key="${install_dir}/host.ed25519"
+
+    get_secrets_cmd="sysctl ${module_name}.params|sed 's/${module_name}\.params\.//'"
+
+    config_file="${install_dir}/config"
+    service_path="/usr/local/etc/rc.d"
+    service_file="${service_path}/${name}"
+    agent_pidfile="/var/run/${name}.pid"
+}
+
+main() {
+    arg=${1:-""}
+    format_cmd="sed s/[^|]*|//"
+
+    if [ "${arg}" == "-h" ] || [ "${arg}" == "--help" ]; then
+        print_usage
+        exit 2
+    fi
+
+    if [ "$(id -u)" -ne 0 ]; then
+        error "Installer must be run as root."
+        exit 1
+    fi
+
+    init
+
+    if [ "${arg}" == "-d" ] || [ "${arg}" == "-u" ] || [ "${arg}" == "--uninstall" ]; then
+        uninstall
+    else
+        install
+    fi
+}
+
+main $*
