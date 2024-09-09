@@ -85,8 +85,9 @@ EOF
     ${format_cmd} <<-EOF > "${install_dir}/server"
         |#!/usr/bin/env bash
         |case "\$2" in
-        |   get-tcp-secrets)
+        |   get)
         |       echo "uname: $(uname)"
+        |       echo "version: $module_version"
         |       exec ${get_secrets_cmd}
         |       ;;
         |esac
@@ -192,7 +193,7 @@ init() {
     name="mitigator_agent"
     user="mitigator_agent"
     module_name="isn_sync"
-    module_version="23.08"
+    module_version="24.10"
     fullname="MITIGATOR Agent"
     install_dir="/usr/local/${name}"
     host_key="${install_dir}/host.ed25519"

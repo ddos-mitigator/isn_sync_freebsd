@@ -175,13 +175,13 @@ static uint64_t isn_sync_tv_to_ms(const struct timeval* tv) {
     return (tv->tv_sec * MS_PER_SEC) + (tv->tv_usec / US_PER_MS);
 }
 
-static uint64_t isn_sync_get_uptime_ms() {
+static uint64_t isn_sync_get_uptime_ms(void) {
     struct timeval tv;
     getmicrouptime(&tv);
     return isn_sync_tv_to_ms(&tv);
 }
 
-static uint64_t isn_sync_get_time_ms() {
+static uint64_t isn_sync_get_time_ms(void) {
     struct timeval tv;
     getmicrotime(&tv);
     return isn_sync_tv_to_ms(&tv);
@@ -190,7 +190,7 @@ static uint64_t isn_sync_get_time_ms() {
 /*
  * Isn.
  */
-static void isn_sync_generate_isn_secret() {
+static void isn_sync_generate_isn_secret(void) {
     if (V_isn_last_reseed != 0) {
         return;
     }
@@ -205,13 +205,13 @@ VNET_DEFINE_STATIC(struct callout, isn_sync_isn_timer_ref);
 
 static void isn_sync_isn_timer(void* arg);
 
-static void isn_sync_isn_timer_init() {
+static void isn_sync_isn_timer_init(void) {
     V_isn_offset_fix = V_isn_offset;
     callout_init(&V_isn_sync_isn_timer_ref, 1);
     callout_reset(&V_isn_sync_isn_timer_ref, hz, isn_sync_isn_timer, curvnet);
 }
 
-static void isn_sync_isn_timer_deinit() {
+static void isn_sync_isn_timer_deinit(void) {
     callout_drain(&V_isn_sync_isn_timer_ref);
 }
 
@@ -236,21 +236,21 @@ static void isn_sync_isn_timer(void* arg) {
  * Syncookie.
  */
 #define EPOCH_PERIOD_MS (15000)
-static uint32_t isn_sync_get_epoch() {
+static uint32_t isn_sync_get_epoch(void) {
     return isn_sync_get_uptime_ms() / EPOCH_PERIOD_MS;
 }
 
-static void isn_sync_debug_init() {
+static void isn_sync_debug_init(void) {
     V_isn_sync_debug.syncookie_current_epoch = 0;
     V_isn_sync_debug.isn_offset_max_runaway_ms = 0;
 }
 
-static void isn_sync_syncache_timer_stop() {
+static void isn_sync_syncache_timer_stop(void) {
     V_tcp_isn_reseed_interval = 0;
     callout_drain(&V_tcp_syncache.secret.reseed);
 }
 
-static void isn_sync_syncache_timer_recover() {
+static void isn_sync_syncache_timer_recover(void) {
     callout_schedule(&V_tcp_syncache.secret.reseed, SYNCOOKIE_LIFETIME * hz);
 }
 
@@ -263,7 +263,7 @@ struct SipKey {
 VNET_DEFINE_STATIC(struct SipKey, cookie_secret);
 #define V_cookie_secret VNET(cookie_secret)
 
-static void isn_sync_generate_cookie_secret() {
+static void isn_sync_generate_cookie_secret(void) {
     _Static_assert(sizeof(V_cookie_secret.u8) ==
             sizeof(V_tcp_syncache.secret.key[0]), "");
     uint32_t epoch = isn_sync_get_epoch();
@@ -288,7 +288,7 @@ static void print_to(char* dst, uint8_t* src, size_t src_size) {
     dst[i] = '\0';
 }
 
-static void isn_sync_refill_periodicly() {
+static void isn_sync_refill_periodicly(void) {
     V_isn_sync_params.clock_hz = hz;
     V_isn_sync_params.clock_jiffies = ticks;
     V_isn_sync_params.clock_uptime_ms = isn_sync_get_uptime_ms();
@@ -302,7 +302,7 @@ static void isn_sync_refill_periodicly() {
 }
 
 #define ISN_SEQ_PERIOD_MS 240000
-static void isn_sync_fill() {
+static void isn_sync_fill(void) {
     print_to(V_isn_sync_params.cookie_secret,
             V_cookie_secret.u8, sizeof(V_cookie_secret.u8));
     V_isn_sync_params.hash_secret = V_tcp_syncache.hash_secret;
@@ -322,13 +322,13 @@ VNET_DEFINE_STATIC(struct callout, isn_sync_syncookie_timer_ref);
 
 static void isn_sync_syncookie_timer(void* arg);
 
-static void isn_sync_syncookie_timer_init() {
+static void isn_sync_syncookie_timer_init(void) {
     callout_init(&V_isn_sync_syncookie_timer_ref, 1);
     callout_reset(&V_isn_sync_syncookie_timer_ref,
             hz, isn_sync_syncookie_timer, &V_tcp_syncache);
 }
 
-static void isn_sync_syncookie_timer_deinit() {
+static void isn_sync_syncookie_timer_deinit(void) {
     callout_drain(&V_isn_sync_syncookie_timer_ref);
 }
 
