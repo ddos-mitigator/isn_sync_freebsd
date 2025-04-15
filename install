@@ -88,6 +88,7 @@ EOF
         |   get)
         |       echo "uname: $(uname)"
         |       echo "version: $module_version"
+        |       echo "time: \$(date +%s)"
         |       exec ${get_secrets_cmd}
         |       ;;
         |esac
