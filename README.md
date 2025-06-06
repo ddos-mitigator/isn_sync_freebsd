@@ -1,7 +1,6 @@
 # isn_sync
 
-FreeBSD kernel module to provide access to TCP SYN cookie secrets
-via `sysctl -a isn_sync`.
+FreeBSD kernel module and agent for TCP protection with ISN synchronization.
 
 ## Kernel Support
 
@@ -12,5 +11,5 @@ via `sysctl -a isn_sync`.
 
 ## Install
 
-This module is a part of the DDoS Mitigator product. To install, follow
+This module is a part of the MITIGATOR product. To install, follow
 the documentation at https://docs.mitigator.ru/integrate/syncookie/

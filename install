@@ -4,7 +4,7 @@ set -eu -o pipefail
 
 print_usage() {
     ${format_cmd} <<-EOF
-        |Install kernel module and agent service for syncookie synchronization with Mitigator software.
+        |Install kernel module and agent service for ISN synchronization with MITIGATOR software.
         |
         |Usage: $(basename $0) [-option]
         |
@@ -193,7 +193,7 @@ init() {
     name="mitigator_agent"
     user="mitigator_agent"
     module_name="isn_sync"
-    module_version="24.10"
+    module_version=$(<./version)
     fullname="MITIGATOR Agent"
     install_dir="/usr/local/${name}"
     host_key="${install_dir}/host.ed25519"
@@ -222,7 +222,7 @@ main() {
 
     init
 
-    if [ "${arg}" == "-d" ] || [ "${arg}" == "-u" ] || [ "${arg}" == "--uninstall" ]; then
+    if [ "${arg}" == "-u" ] || [ "${arg}" == "--uninstall" ]; then
         uninstall
     else
         install
